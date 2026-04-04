@@ -84,6 +84,35 @@ export default async function handler(req, res) {
     if (!r.ok) return res.status(r.status).json(data);
     return res.status(200).json(data);
   }
-
+// ── 4. Webhook registrieren ──                                                                                                  
+    if (action === 'webhook_register') {                                                                                              
+      const { callback_url, verify_token } = req.query;
+      const r = await fetch('https://www.strava.com/api/v3/push_subscriptions', {                                                     
+        method: 'POST',                                                                                                               
+        headers: { 'Content-Type': 'application/json' },                                                                              
+        body: JSON.stringify({ client_id: process.env.STRAVA_CLIENT_ID, client_secret: process.env.STRAVA_CLIENT_SECRET, callback_url,
+   verify_token }),                                                                                                                   
+      });
+      const data = await r.json();                                                                                                    
+      if (!r.ok) return res.status(r.status).json(data);    
+      return res.status(200).json(data);                                                                                              
+    }
+                                                                                                                                      
+    // ── 5. Webhook Status ──                              
+    if (action === 'webhook_status') {                                                                                                
+      const r = await fetch(`https://www.strava.com/api/v3/push_subscriptions?client_id=${process.env.STRAVA_CLIENT_ID}&client_secret=
+  ${process.env.STRAVA_CLIENT_SECRET}`);                                                                                              
+      return res.status(200).json(await r.json());
+    }                                                                                                                                 
+                                                            
+    // ── 6. Webhook löschen ──                                                                                                       
+    if (action === 'webhook_delete') {                      
+      const r = await fetch(`https://www.strava.com/api/v3/push_subscriptions/${req.query.subscription_id}`, {                        
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },                                                                              
+        body: JSON.stringify({ client_id: process.env.STRAVA_CLIENT_ID, client_secret: process.env.STRAVA_CLIENT_SECRET }),           
+      });                                                                                                                             
+      return res.status(200).json(r.status === 204 ? { ok: true } : await r.json());                                                  
+    }                           
   return res.status(400).json({ error: 'Unbekannte action: ' + action });
 }
