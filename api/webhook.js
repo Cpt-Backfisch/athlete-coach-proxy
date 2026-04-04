@@ -41,20 +41,24 @@ export default async function handler(req, res) {
         const pace = (act.average_speed && act.type === 'Run')                                                                        
           ? `${Math.floor(1000/act.average_speed/60)}:${String(Math.round((1000/act.average_speed)%60)).padStart(2,'0')} /km` : null; 
                                                                                                                                       
-        const prompt = `Du bist Sebastians persönlicher Triathlon-Coach. Bewerte diese Einheit in 2-3 kurzen, motivierenden Sätzen auf
-   Deutsch. Konkret, persönlich, direkt.                                                                                              
+        // Prompt aus Supabase lesen                                                                                                        
+  let coachPrompt = 'Du bist Sebastians persönlicher Triathlon-Coach. Bewerte diese Einheit in 2-3 kurzen, motivierenden Sätzen auf   
+  Deutsch. Konkret, persönlich, direkt.';                                                                                             
+  try {                                                                                                                               
+    const sbRes = await fetch('https://cpzdqgrqodvwtnqmusso.supabase.co/rest/v1/settings?select=data&limit=1', {                      
+      headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}` }              
+    });                                                                                                                               
+    const sbRows = await sbRes.json();                                                                                                
+    const sbCfg = JSON.parse(sbRows?.[0]?.data || '{}');                                                                              
+    if (sbCfg.coachPrompt) coachPrompt = sbCfg.coachPrompt;                                                                           
+  } catch(_) {}                                                                                                                     
+                                                                                                                                      
+  const prompt = `${coachPrompt}                                                                                                    
                                                                                                                                       
   Einheit: ${type} — ${act.name}                                                                                                      
-  ${distKm ? `Distanz: ${distKm} km` : ''}${durMin ? ` · ${durMin} min` : ''}${hr ? ` · ♥ ${hr} bpm` : ''}${pace ? ` · ${pace}` : 
+  ${distKm ? `Distanz: ${distKm} km` : ''}${durMin ? ` · ${durMin} min` : ''}${hr ? ` · ♥ ${hr} bpm` : ''}${pace ? ` · ${pace}` :   
   ''}${act.total_elevation_gain ? ` · ${Math.round(act.total_elevation_gain)}m Hm` : ''}                                              
-  ${act.description ? `Notizen: ${act.description}` : ''}`; 
-                                                                                                                                      
-        const cr = await fetch('https://api.anthropic.com/v1/messages', {                                                             
-          method: 'POST',                                                                                                             
-          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.CLAUDE_API_KEY, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{ role: 'user', content: prompt }]   
-  }),                                                                                                                                 
-        });                                                                                                                           
+  ${act.description ? `Notizen: ${act.description}` : ''}`;                                                                                                                           
         const coachMsg = (await cr.json()).content?.[0]?.text || 'Super Training! 💪';                                                
                                                                                                                                       
         const stats = [type, distKm?`${distKm} km`:null, durMin?`${durMin} min`:null, hr?`♥ ${hr}`:null].filter(Boolean).join(' · '); 
