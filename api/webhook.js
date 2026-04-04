@@ -1,12 +1,12 @@
 export default async function handler(req, res) {
     // GET: Strava Webhook-Validierung                                                                                                
-    if (req.method === 'GET') {
-      const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;                                  
-      if (mode === 'subscribe' && token === process.env.STRAVA_VERIFY_TOKEN) {                                                        
-        return res.status(200).json({ 'hub.challenge': challenge });                                                                  
-      }                                                                                                                               
-      return res.status(403).json({ error: 'Verification failed' });
-    }                                                                                                                                 
+    if (req.method === 'GET') {                                                                                                     
+        const { 'hub.mode': mode, 'hub.challenge': challenge } = req.query;
+        if (mode === 'subscribe' && challenge) {                                                                                      
+          return res.status(200).json({ 'hub.challenge': challenge });
+        }                                                                                                                             
+        return res.status(200).json({ ok: true });          
+      }                                                                                                                          
                                                             
     // POST: Neue Aktivität                                                                                                           
     if (req.method === 'POST') {                            
