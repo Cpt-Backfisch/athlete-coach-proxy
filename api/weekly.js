@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     // 1. Settings laden                                                                                                              
     const settingsRows = await sbFetch('settings');
     const cfg = JSON.parse(settingsRows?.[0]?.data || '{}');                                                                          
-    const claudeKey = cfg.claudeKey || process.env.CLAUDE_API_KEY;                                                                    
+    const claudeKey = cfg.claudeApiKey || process.env.CLAUDE_API_KEY;                                                                    
     const tgToken = cfg.telegramToken || process.env.TELEGRAM_BOT_TOKEN;
     const tgChat = cfg.telegramChatId || process.env.TELEGRAM_CHAT_ID;                                                                
     const coachPrompt = cfg.coachPrompt || 'Du bist Sebastians persönlicher Triathlon-Coach.';
