@@ -24,16 +24,17 @@ export default async function handler(req, res) {
     const coachPrompt = cfg.coachPrompt || 'Du bist Sebastians persönlicher Triathlon-Coach.';
                                                                                                                                       
     if (!claudeKey || !tgToken || !tgChat) {
+      const knownKeys = Object.keys(process.env).filter(k =>
+        k.includes('TELEGRAM') || k.includes('CLAUDE') || k.includes('SUPABASE') || k.includes('STRAVA')
+      );
       return res.status(500).json({
         error: 'Missing config',
         claudeKey: !!claudeKey,
         tgToken: !!tgToken,
         tgChat: !!tgChat,
         cfgKeys: Object.keys(cfg),
-        envClaude: !!process.env.CLAUDE_API_KEY,
-        envTgToken: !!process.env.TELEGRAM_BOT_TOKEN,
-        envTgChat: !!process.env.TELEGRAM_CHAT_ID,
-        supabaseRows: settingsRows?.length ?? 'not array'
+        supabaseRows: Array.isArray(settingsRows) ? settingsRows.length : JSON.stringify(settingsRows).slice(0,100),
+        detectedEnvKeys: knownKeys
       });
     }                                                                                                                                 
    
