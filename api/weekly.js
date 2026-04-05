@@ -23,8 +23,18 @@ export default async function handler(req, res) {
     const tgChat = cfg.telegramChatId || process.env.TELEGRAM_CHAT_ID;                                                                
     const coachPrompt = cfg.coachPrompt || 'Du bist Sebastians persönlicher Triathlon-Coach.';
                                                                                                                                       
-    if (!claudeKey || !tgToken || !tgChat) {                
-      return res.status(500).json({ error: 'Missing config (claudeKey/telegramToken/telegramChatId)' });                              
+    if (!claudeKey || !tgToken || !tgChat) {
+      return res.status(500).json({
+        error: 'Missing config',
+        claudeKey: !!claudeKey,
+        tgToken: !!tgToken,
+        tgChat: !!tgChat,
+        cfgKeys: Object.keys(cfg),
+        envClaude: !!process.env.CLAUDE_API_KEY,
+        envTgToken: !!process.env.TELEGRAM_BOT_TOKEN,
+        envTgChat: !!process.env.TELEGRAM_CHAT_ID,
+        supabaseRows: settingsRows?.length ?? 'not array'
+      });
     }                                                                                                                                 
    
     // 2. Aktivitäten der letzten 7 Tage                                                                                              
