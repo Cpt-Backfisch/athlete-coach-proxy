@@ -15,6 +15,29 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // Deduplication: skip if already processed within last 10 min
+    const dedupKey = `webhook_processed_${event.object_id}`;
+    const SUPABASE_URL = 'https://cpzdqgrqodvwtnqmusso.supabase.co';
+    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+    try {
+      const chk = await fetch(`${SUPABASE_URL}/rest/v1/settings?select=data&limit=1`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+      const rows = await chk.json();
+      const cfg = JSON.parse(rows?.[0]?.data || '{}');
+      const lastProcessed = cfg[dedupKey] || 0;
+      if (Date.now() - lastProcessed < 10 * 60 * 1000) {
+        return res.status(200).json({ ok: true, skipped: 'duplicate' });
+      }
+      // Mark as processed
+      cfg[dedupKey] = Date.now();
+      await fetch(`${SUPABASE_URL}/rest/v1/settings?user_id=eq.${rows?.[0]?.user_id||''}`, {
+        method: 'PATCH',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ data: JSON.stringify(cfg) })
+      });
+    } catch(_) {}
+
     try {
       // Strava Access Token holen
       const tr = await fetch('https://www.strava.com/oauth/token', {
