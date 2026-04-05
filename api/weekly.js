@@ -96,8 +96,7 @@ export default async function handler(req, res) {
       'Nächste Wettkämpfe:',                                                                                                          
       racesInfo,                                                                                                                      
       '',                                                   
-      'Gib eine motivierende Wochenzusammenfassung: was lief gut, was fällt auf, kurzer Ausblick auf nächste Woche. Maximal 5 kompakte
-   Absätze, Telegram-freundliches Format.'                                                                                            
+      'Gib eine motivierende Wochenzusammenfassung: was lief gut, was fällt auf, kurzer Ausblick auf nächste Woche. Maximal 5 kompakte Absätze, Telegram-freundliches Format.'                                                                                            
     ].join('\n');
                                                                                                                                       
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -110,8 +109,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({                                
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 700,                                                                                                              
-        system: coachPrompt + '\n\nSchreibe eine Wochenzusammenfassung. Nutze Emojis sparsam, kein HTML, kein Markdown-Fettdruck mit 
-  **, nur normalen Text.',                                                                                                            
+        system: coachPrompt + '\n\nSchreibe eine Wochenzusammenfassung. Nutze Emojis sparsam, kein HTML, kein Markdown-Fettdruck mit **, nur normalen Text.',                                                                                                            
         messages: [{ role: 'user', content: userMsg }]      
       })                                                                                                                              
     });                                                     
