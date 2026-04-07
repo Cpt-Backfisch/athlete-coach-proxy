@@ -102,7 +102,13 @@ export default async function handler(req, res) {
           messages: [{ role: 'user', content: prompt }]
         })
       });
-      const coachMsg = (await cr.json()).content?.[0]?.text || 'Super Training! 💪';
+      const crJson = await cr.json();
+      let coachMsg = crJson.content?.[0]?.text || 'Super Training! 💪';
+      // Bei max_tokens: am letzten vollständigen Satz abschneiden
+      if (crJson.stop_reason === 'max_tokens') {
+        const lastStop = Math.max(coachMsg.lastIndexOf('.'), coachMsg.lastIndexOf('!'), coachMsg.lastIndexOf('?'));
+        if (lastStop > 0) coachMsg = coachMsg.slice(0, lastStop + 1);
+      }
 
       // Telegram senden
       const stats = [type, distKm ? `${distKm} km` : null, durMin ? `${durMin} min` : null, hr ? `♥ ${hr}` : null]
