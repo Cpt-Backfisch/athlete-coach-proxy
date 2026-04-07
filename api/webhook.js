@@ -15,30 +15,35 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // Deduplication: skip if already processed within last 10 min
+    // Sofort 200 antworten damit Strava nicht retried
+    res.status(200).json({ ok: true });
+
+    // Deduplication via Supabase
     const dedupKey = `webhook_processed_${event.object_id}`;
     const SUPABASE_URL = 'https://cpzdqgrqodvwtnqmusso.supabase.co';
     const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
     try {
-      const chk = await fetch(`${SUPABASE_URL}/rest/v1/settings?select=data&limit=1`, {
+      const chk = await fetch(`${SUPABASE_URL}/rest/v1/settings?select=data,user_id&limit=1`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       });
       const rows = await chk.json();
       const cfg = JSON.parse(rows?.[0]?.data || '{}');
       const lastProcessed = cfg[dedupKey] || 0;
       if (Date.now() - lastProcessed < 10 * 60 * 1000) {
-        return res.status(200).json({ ok: true, skipped: 'duplicate' });
+        return; // Duplicate — already processed
       }
-      // Mark as processed
+      // Mark as processed immediately before async work
       cfg[dedupKey] = Date.now();
-      await fetch(`${SUPABASE_URL}/rest/v1/settings?user_id=eq.${rows?.[0]?.user_id||''}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/settings?user_id=eq.${rows?.[0]?.user_id || ''}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ data: JSON.stringify(cfg) })
       });
-    } catch(_) {}
 
-    try {
+      // Coach-Prompt aus settings lesen (cfg schon geladen)
+      let coachPrompt = 'Du bist Sebastians persönlicher Triathlon-Coach. Bewerte diese Einheit in 2-3 kurzen, motivierenden Sätzen auf Deutsch. Konkret, persönlich, direkt.';
+      if (cfg.coachPrompt) coachPrompt = cfg.coachPrompt;
+
       // Strava Access Token holen
       const tr = await fetch('https://www.strava.com/oauth/token', {
         method: 'POST',
@@ -71,18 +76,6 @@ export default async function handler(req, res) {
         ? `${Math.floor(1000 / act.average_speed / 60)}:${String(Math.round((1000 / act.average_speed) % 60)).padStart(2, '0')} /km`
         : null;
 
-      // Coach-Prompt aus Supabase lesen
-      let coachPrompt = 'Du bist Sebastians persönlicher Triathlon-Coach. Bewerte diese Einheit in 2-3 kurzen, motivierenden Sätzen auf Deutsch. Konkret, persönlich, direkt.';
-      try {
-        const sbRes = await fetch('https://cpzdqgrqodvwtnqmusso.supabase.co/rest/v1/settings?select=data&limit=1', {
-          headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}` }
-        });
-        const sbRows = await sbRes.json();
-        const sbCfg = JSON.parse(sbRows?.[0]?.data || '{}');
-        if (sbCfg.coachPrompt) coachPrompt = sbCfg.coachPrompt;
-      } catch (_) {}
-
-      // Aktivitäts-Details für Prompt
       const details = [
         distKm ? `Distanz: ${distKm} km` : null,
         durMin ? `Dauer: ${durMin} min` : null,
@@ -95,11 +88,10 @@ export default async function handler(req, res) {
       const prompt = `Einheit: ${type} — ${act.name}\n${details}`;
 
       // Claude aufrufen
-      const claudeKey = process.env.CLAUDE_API_KEY;
       const cr = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
-          'x-api-key': claudeKey,
+          'x-api-key': process.env.CLAUDE_API_KEY,
           'anthropic-version': '2023-06-01',
           'content-type': 'application/json'
         },
@@ -125,12 +117,11 @@ export default async function handler(req, res) {
           parse_mode: 'Markdown'
         }),
       });
-
     } catch (e) {
       console.error('Webhook error:', e);
     }
 
-    return res.status(200).json({ ok: true });
+    return;
   }
 
   return res.status(405).end();
