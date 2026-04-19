@@ -15,9 +15,6 @@ export default async function handler(req, res) {
   const message = update?.message;
   if (!message?.text) return res.status(200).json({ ok: true }); // Kein Text → ignorieren
 
-  // Sofort 200 antworten, damit Telegram nicht retried
-  res.status(200).json({ ok: true });
-
   const chatId = message.chat.id;
   const userText = message.text;
 
@@ -113,19 +110,21 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: antwort }),
     });
+
+    // Telegram erwartet immer 200, sonst retried er die Nachricht
+    return res.status(200).json({ ok: true });
   } catch (e) {
     console.error('telegram-coach error:', e);
     // Fehlermeldung an Telegram senden (Best-effort)
-    await fetch(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: '⚠️ Fehler beim Verarbeiten deiner Nachricht. Bitte versuche es erneut.',
-        }),
-      }
-    ).catch(() => {});
+    await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: '⚠️ Fehler beim Verarbeiten deiner Nachricht. Bitte versuche es erneut.',
+      }),
+    }).catch(() => {});
+
+    return res.status(200).json({ ok: true });
   }
 }
