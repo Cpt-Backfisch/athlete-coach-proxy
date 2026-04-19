@@ -24,13 +24,19 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Missing config (claudeKey/telegramToken/telegramChatId)' });
   }
 
-  // 2. Aktivitäten der letzten 7 Tage
+  // 2. Aktivitäten der letzten ISO-Woche (Montag bis Sonntag)
   const actRows = await sbFetch('activities');
   const allActivities = JSON.parse(actRows?.[0]?.data || '[]');
   const now = new Date();
-  const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-  const weekAgoStr = weekAgo.toISOString().split('T')[0];
-  const todayStr = now.toISOString().split('T')[0];
+  // ISO-Woche: Montag=1, Sonntag=7 (nicht Sonntag=0 wie JS getDay())
+  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - (dayOfWeek - 1));
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const weekAgoStr = monday.toISOString().split('T')[0];
+  const todayStr = sunday.toISOString().split('T')[0];
   const weekActs = allActivities.filter(a => a.date >= weekAgoStr && a.date <= todayStr);
 
   // 3. Nächste Wettkämpfe
@@ -112,8 +118,10 @@ export default async function handler(req, res) {
   const summary = claudeData.content?.[0]?.text;
   if (!summary) return res.status(500).json({ error: 'Claude failed', detail: claudeData });
 
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  // ISO-Kalenderwoche berechnen (Mo=1, So=7)
+  const d = new Date(Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate()));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 
   // 6. Telegram
   const msg = `📋 Wochenzusammenfassung KW${weekNum}\n\n${summary}`;
