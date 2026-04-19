@@ -40,6 +40,9 @@ export default async function handler(req, res) {
         body: JSON.stringify({ data: JSON.stringify(cfg) })
       });
 
+      // Telegram-Push deaktiviert? Dann abbrechen.
+      if (cfg.telegram_push_enabled === 'false') return;
+
       // Coach-Prompt aus settings lesen (cfg schon geladen)
       let coachPrompt = 'Du bist Sebastians persönlicher Triathlon-Coach. Bewerte diese Einheit in 2-3 kurzen, motivierenden Sätzen auf Deutsch. Konkret, persönlich, direkt.';
       if (cfg.coachPrompt) coachPrompt = cfg.coachPrompt;

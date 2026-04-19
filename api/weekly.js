@@ -24,6 +24,11 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Missing config (claudeKey/telegramToken/telegramChatId)' });
   }
 
+  // Wöchentliche Zusammenfassung deaktiviert? Dann abbrechen.
+  if (cfg.telegram_weekly_enabled === 'false') {
+    return res.status(200).json({ ok: true, skipped: 'telegram_weekly_enabled=false' });
+  }
+
   // 2. Aktivitäten der letzten ISO-Woche (Montag bis Sonntag)
   const actRows = await sbFetch('activities');
   const allActivities = JSON.parse(actRows?.[0]?.data || '[]');
