@@ -19,10 +19,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // Sofort 200 antworten damit Strava nicht retried
-    res.status(200).json({ ok: true });
-    console.log('[webhook] 200 sent to Strava, continuing async work');
-
     // Deduplication via Supabase
     const dedupKey = `webhook_processed_${event.object_id}`;
     const SUPABASE_URL = "https://cpzdqgrqodvwtnqmusso.supabase.co";
@@ -45,7 +41,7 @@ export default async function handler(req, res) {
       console.log('[webhook] dedup check: lastProcessed=', lastProcessed, '| age_ms=', Date.now() - lastProcessed);
       if (Date.now() - lastProcessed < 10 * 60 * 1000) {
         console.log('[webhook] EARLY RETURN: duplicate, already processed within 10min');
-        return; // Duplicate — already processed
+        return res.status(200).json({ ok: true });
       }
       // Mark as processed immediately before async work
       cfg[dedupKey] = Date.now();
@@ -68,7 +64,7 @@ export default async function handler(req, res) {
       console.log('[webhook] telegram_push_enabled:', cfg.telegram_push_enabled);
       if (cfg.telegram_push_enabled === "false") {
         console.log('[webhook] EARLY RETURN: telegram_push_enabled=false');
-        return;
+        return res.status(200).json({ ok: true });
       }
 
       // coach_system_prompt (React App) hat Vorrang vor coachPrompt (Monolith)
@@ -192,11 +188,11 @@ export default async function handler(req, res) {
         },
       );
       console.log('[webhook] telegram send result status:', tgRes.status);
+      return res.status(200).json({ ok: true });
     } catch (e) {
       console.error('[webhook] CAUGHT ERROR:', e);
+      return res.status(200).json({ ok: true });
     }
-
-    return;
   }
 
   return res.status(405).end();
