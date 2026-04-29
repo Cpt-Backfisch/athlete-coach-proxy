@@ -35,6 +35,7 @@ export default async function handler(req, res) {
         },
       );
       const rows = await chk.json();
+      const userId = rows?.[0]?.user_id || "";
       console.log('[webhook] settings fetch status:', chk.status, '| rows count:', rows?.length);
       const cfg = JSON.parse(rows?.[0]?.data || "{}");
       const lastProcessed = cfg[dedupKey] || 0;
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
       // Mark as processed immediately before async work
       cfg[dedupKey] = Date.now();
       const patchRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/settings?user_id=eq.${rows?.[0]?.user_id || ""}`,
+        `${SUPABASE_URL}/rest/v1/settings?user_id=eq.${userId}`,
         {
           method: "PATCH",
           headers: {
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({ data: JSON.stringify(cfg) }),
         },
       );
-      console.log('[webhook] dedup PATCH status:', patchRes.status, '| user_id:', rows?.[0]?.user_id);
+      console.log('[webhook] dedup PATCH status:', patchRes.status, '| user_id:', userId);
 
       // Telegram-Push deaktiviert? Dann abbrechen.
       console.log('[webhook] telegram_push_enabled:', cfg.telegram_push_enabled);
@@ -74,6 +75,28 @@ export default async function handler(req, res) {
       else if (cfg.coachPrompt) coachPrompt = cfg.coachPrompt;
       console.log('[webhook] coach prompt loaded: length=', coachPrompt.length);
 
+      // Strava Refresh Token aus Supabase lesen
+      // NOTE: STRAVA_ATHLETE_REFRESH_TOKEN env var deprecated — token now sourced from supabase strava_token table.
+      console.log('[webhook] fetching strava token from supabase for user_id:', userId);
+      const stravaTokenRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/strava_token?user_id=eq.${userId}&select=data&limit=1`,
+        {
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+          },
+        },
+      );
+      const stravaTokenRows = await stravaTokenRes.json();
+      console.log('[webhook] strava_token fetch status:', stravaTokenRes.status, '| rows count:', stravaTokenRows?.length);
+      const stravaTokenData = JSON.parse(stravaTokenRows?.[0]?.data || "{}");
+      const refreshToken = stravaTokenData.refresh_token;
+      if (!refreshToken) {
+        console.log('[webhook] ERROR: refresh_token missing in supabase');
+        return res.status(200).json({ ok: true, error: "no_token" });
+      }
+      console.log('[webhook] refresh_token from supabase: present=true, length=', refreshToken.length);
+
       // Strava Access Token holen
       console.log('[webhook] fetching strava access token');
       const tr = await fetch("https://www.strava.com/oauth/token", {
@@ -82,13 +105,39 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           client_id: process.env.STRAVA_CLIENT_ID,
           client_secret: process.env.STRAVA_CLIENT_SECRET,
-          refresh_token: process.env.STRAVA_ATHLETE_REFRESH_TOKEN,
+          refresh_token: refreshToken,
           grant_type: "refresh_token",
         }),
       });
       const trJson = await tr.json();
-      const { access_token } = trJson;
+      if (tr.status !== 200) {
+        console.log('[webhook] strava token refresh failed:', JSON.stringify(trJson));
+        return res.status(200).json({ ok: true, error: "strava_token_failed" });
+      }
+      const { access_token, refresh_token: newRefreshToken, expires_at: newExpiresAt } = trJson;
       console.log('[webhook] strava token fetch status:', tr.status, '| access_token present:', !!access_token);
+
+      // Token-Rotation: neuen Refresh Token in Supabase speichern, wenn unterschiedlich
+      if (newRefreshToken && newRefreshToken !== refreshToken) {
+        console.log('[webhook] strava token rotated, supabase updated');
+        stravaTokenData.refresh_token = newRefreshToken;
+        stravaTokenData.access_token = access_token;
+        if (newExpiresAt) stravaTokenData.expires_at = newExpiresAt;
+        const rotPatch = await fetch(
+          `${SUPABASE_URL}/rest/v1/strava_token?user_id=eq.${userId}`,
+          {
+            method: "PATCH",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              "Content-Type": "application/json",
+              Prefer: "return=minimal",
+            },
+            body: JSON.stringify({ data: JSON.stringify(stravaTokenData) }),
+          },
+        );
+        console.log('[webhook] strava_token rotation PATCH status:', rotPatch.status);
+      }
 
       // Aktivität laden
       console.log('[webhook] fetching activity from strava, id:', event.object_id);
