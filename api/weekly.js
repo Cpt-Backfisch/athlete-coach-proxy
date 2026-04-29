@@ -29,26 +29,40 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, skipped: 'telegram_weekly_enabled=false' });
   }
 
-  // 2. Aktivitäten der letzten ISO-Woche (Montag bis Sonntag)
+  // 2. Aktivitäten der aktuellen ISO-Woche (Montag 00:00 bis Sonntag 23:59 Europe/Berlin)
   const actRows = await sbFetch('activities');
   const allActivities = JSON.parse(actRows?.[0]?.data || '[]');
   const now = new Date();
-  // ISO-Woche: Montag=1, Sonntag=7 (nicht Sonntag=0 wie JS getDay())
-  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - (dayOfWeek - 1));
-  monday.setHours(0, 0, 0, 0);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const weekAgoStr = monday.toISOString().split('T')[0];
-  const todayStr = sunday.toISOString().split('T')[0];
-  const weekActs = allActivities.filter(a => a.date >= weekAgoStr && a.date <= todayStr);
+
+  // Aktuelles Datum und Wochentag in Europe/Berlin ermitteln (DST-sicher via Intl)
+  const berlinParts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'long',
+  }).formatToParts(now);
+  const bp = {};
+  for (const { type, value } of berlinParts) bp[type] = value;
+  const berlinTodayStr = `${bp.year}-${bp.month}-${bp.day}`;
+  const berlinWeekdayISO = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 }[bp.weekday];
+
+  // ISO-Wochengrenzen als Datums-Strings (Montag bis Sonntag)
+  const mondayBase = new Date(berlinTodayStr + 'T12:00:00Z');
+  mondayBase.setUTCDate(mondayBase.getUTCDate() - (berlinWeekdayISO - 1));
+  const weekStartStr = mondayBase.toISOString().split('T')[0];
+
+  const sundayBase = new Date(mondayBase);
+  sundayBase.setUTCDate(mondayBase.getUTCDate() + 6);
+  const weekEndStr = sundayBase.toISOString().split('T')[0];
+
+  const weekActs = allActivities.filter(a => a.date >= weekStartStr && a.date <= weekEndStr);
 
   // 3. Nächste Wettkämpfe
   const raceRows = await sbFetch('races');
   const allRaces = JSON.parse(raceRows?.[0]?.data || '[]');
   const upcoming = allRaces
-    .filter(r => r.date >= todayStr)
+    .filter(r => r.date >= berlinTodayStr)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 3);
 
@@ -96,7 +110,7 @@ export default async function handler(req, res) {
 
   // 5. Claude
   const userMsg = [
-    `Trainingswoche ${weekAgoStr} bis ${todayStr}:`,
+    `Trainingswoche ${weekStartStr} bis ${weekEndStr}:`,
     '',
     statsLines,
     '',
@@ -123,10 +137,12 @@ export default async function handler(req, res) {
   const summary = claudeData.content?.[0]?.text;
   if (!summary) return res.status(500).json({ error: 'Claude failed', detail: claudeData });
 
-  // ISO-Kalenderwoche berechnen (Mo=1, So=7)
-  const d = new Date(Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate()));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  // ISO-Kalenderwoche nach ISO 8601 (Donnerstag-basiert, aus WeekGoalCard.tsx)
+  const kwBase = new Date(weekStartStr + 'T12:00:00Z');
+  const kwDay = kwBase.getUTCDay() || 7;
+  kwBase.setUTCDate(kwBase.getUTCDate() + 4 - kwDay);
+  const yearStart = new Date(Date.UTC(kwBase.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((kwBase.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 
   // 6. Telegram
   const msg = `📋 Wochenzusammenfassung KW${weekNum}\n\n${summary}`;
@@ -139,5 +155,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Telegram failed', detail: await tgRes.json() });
   }
 
-  return res.status(200).json({ ok: true, week: `${weekAgoStr} – ${todayStr}`, activities: weekActs.length });
+  return res.status(200).json({ ok: true, week: `${weekStartStr} – ${weekEndStr}`, activities: weekActs.length });
 }
